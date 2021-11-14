@@ -1,3 +1,4 @@
+mod lex;
 mod toolbox;
 
 #[cfg(test)]

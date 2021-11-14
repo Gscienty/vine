@@ -12,10 +12,11 @@ pub trait Prng {
 }
 
 fn tw223_gen(prng: &mut PrngState, idx: usize, r: &mut u64, p: [i32; 3]) {
-    let z = prng.get(idx);
-    *z = (((*z << p[1]) ^ *z) >> (p[0] - p[2]))
-        ^ ((*z & (0xffffffffffffffff << (64 - p[0]))) << p[2]);
-    *r = *r ^ *z;
+    if let Some(z) = prng.get_mut(idx) {
+        *z = (((*z << p[1]) ^ *z) >> (p[0] - p[2]))
+            ^ ((*z & (0xffffffffffffffff << (64 - p[0]))) << p[2]);
+        *r = *r ^ *z;
+    }
 }
 
 fn tw223_step(prng: &mut PrngState, r: &mut u64) {
@@ -30,8 +31,20 @@ impl PrngState {
         PrngState { u: [0; 4] }
     }
 
-    fn get(&mut self, i: usize) -> &mut u64 {
-        &mut self.u[i]
+    fn get(&self, i: usize) -> Option<u64> {
+        if i < 4 {
+            Some(self.u[i])
+        } else {
+            None
+        }
+    }
+
+    fn get_mut(&mut self, i: usize) -> Option<&mut u64> {
+        if i < 4 {
+            Some(&mut self.u[i])
+        } else {
+            None
+        }
     }
 }
 
@@ -50,28 +63,76 @@ impl Prng for PrngState {
         let mut r: u64 = 0;
         tw223_step(self, &mut r);
 
-        (*self.get(3) & 0x000fffffffffffff) | 0x3ff0000000000000
+        (r & 0x000fffffffffffff) | 0x3ff0000000000000
     }
 
     fn gen_u64(&mut self) -> u64 {
         let mut r: u64 = 0;
         tw223_step(self, &mut r);
 
-        *self.get(3)
+        r
     }
 
     fn condition(&mut self) {
-        if *self.get(0) < (1u64 << 1) {
-            *self.get(0) += 1u64 << 1;
+        if self.get(0).lt(&Some(1u64 << 1)) {
+            *self.get_mut(0).unwrap() += 1u64 << 1;
         }
-        if *self.get(1) < (1u64 << 6) {
-            *self.get(1) += 1u64 << 1;
+        if self.get(1).lt(&Some(1u64 << 6)) {
+            *self.get_mut(1).unwrap() += 1u64 << 6;
         }
-        if *self.get(2) < (1u64 << 9) {
-            *self.get(2) += 1u64 << 9;
+        if self.get(2).lt(&Some(1u64 << 9)) {
+            *self.get_mut(2).unwrap() += 1u64 << 6;
         }
-        if *self.get(3) < (1u64 << 17) {
-            *self.get(3) += 1u64 << 17;
+        if self.get(3).lt(&Some(1u64 << 17)) {
+            *self.get_mut(3).unwrap() += 1u64 << 17;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Prng, PrngState};
+
+    #[test]
+    fn init_prng() {
+        let prng: PrngState = PrngState::new();
+
+        for i in 0..4 {
+            assert!(prng.get(i).is_some());
+        }
+
+        assert!(prng.get(4).is_none());
+    }
+
+    #[test]
+    fn seed_secure() {
+        let mut prng: PrngState = PrngState::new();
+
+        for i in 0..4 {
+            assert!(prng.get(i).eq(&Some(0)))
+        }
+
+        prng.seed_secure();
+
+        for i in 0..4 {
+            assert!(prng.get(i).ne(&Some(0)));
+        }
+    }
+
+    #[test]
+    fn gen_u64() {
+        let mut prng: PrngState = PrngState::new();
+        prng.seed_secure();
+
+        let mut g1 = prng.gen_u64();
+
+        for _ in 1..100 {
+            prng.condition();
+            let g2 = prng.gen_u64();
+
+            assert_ne!(g1, g2);
+
+            g1 = g2;
         }
     }
 }
