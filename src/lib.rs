@@ -1,4 +1,5 @@
 mod lex;
+mod parse;
 mod toolbox;
 
 #[cfg(test)]

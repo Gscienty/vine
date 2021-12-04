@@ -1,3 +1,5 @@
 mod number;
 pub mod state;
-mod token;
+pub mod token;
+
+pub use token::{LexNumberValue, LexToken};
